@@ -23,10 +23,6 @@ viewSolution =
         |> Element.text
 
 
-testInput =
-    [ 100756 ]
-
-
 input : List Int
 input =
     [ 102562
