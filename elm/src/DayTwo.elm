@@ -17,21 +17,31 @@ main =
         }
 
 
-type Model
-    = Running RunningModel
-    | Complete (Array Int)
+type alias Model =
+    { part1 : State, part2 : State }
+
+
+type State
+    = Running RunningState
+    | Complete RunningState
     | Error String
 
 
-type alias RunningModel =
+type alias RunningState =
     { input : Array Int
-    , index : Int
+    , instructionPointer : Int
+    , noun : Int
+    , verb : Int
     }
 
 
 init : () -> ( Model, Cmd Msg )
 init _ =
-    ( Running { input = puzzleInput, index = 0 }, process )
+    ( { part1 = Running { input = puzzleInput |> setNoun 12 |> setVerb 2, instructionPointer = 0, noun = 12, verb = 2 }
+      , part2 = Running { input = puzzleInput, instructionPointer = 0, noun = 0, verb = 0 }
+      }
+    , process
+    )
 
 
 process : Cmd Msg
@@ -45,38 +55,90 @@ type Msg
 
 update : Msg -> Model -> ( Model, Cmd Msg )
 update msg model =
-    case model of
-        Running { input, index } ->
-            case msg of
-                Process ->
-                    case Array.get index input of
-                        Nothing ->
-                            ( Error "Missing index", Cmd.none )
+    case msg of
+        Process ->
+            let
+                ( nextPart1, cmd1 ) =
+                    case model.part1 of
+                        Running runningState ->
+                            computer runningState
 
-                        Just 99 ->
-                            ( Complete input, Cmd.none )
+                        _ ->
+                            ( model.part1, Cmd.none )
 
-                        Just 1 ->
-                            case getCalcParts index input of
-                                Nothing ->
-                                    ( Error "Missing calc parts", Cmd.none )
+                ( nextPart2, cmd2 ) =
+                    case model.part2 of
+                        Running runningState ->
+                            computer runningState
 
-                                Just ( aIdx, bIdx, resultIdx ) ->
-                                    nextInput (mathOnIndicies aIdx bIdx resultIdx (+) input) index
+                        _ ->
+                            ( model.part2, Cmd.none )
 
-                        Just 2 ->
-                            case getCalcParts index input of
-                                Nothing ->
-                                    ( Error "Missing calc parts", Cmd.none )
+                ( finalPart2, cmd2Final ) =
+                    case nextPart2 of
+                        Complete completeState ->
+                            if checkGoal completeState.input then
+                                ( nextPart2, cmd2 )
 
-                                Just ( aIdx, bIdx, resultIdx ) ->
-                                    nextInput (mathOnIndicies aIdx bIdx resultIdx (*) input) index
+                            else
+                                ( Running ({ completeState | input = puzzleInput, instructionPointer = 0 } |> incrementNounVerb), process )
 
-                        Just a ->
-                            ( Error ("Unknown opcode: " ++ String.fromInt a), Cmd.none )
+                        _ ->
+                            ( nextPart2, cmd2 )
+            in
+            ( { model | part1 = nextPart1, part2 = finalPart2 }
+            , Cmd.batch [ cmd1, cmd2Final ]
+            )
 
-        _ ->
-            ( model, Cmd.none )
+
+incrementNounVerb : RunningState -> RunningState
+incrementNounVerb stateOrig =
+    let
+        stateNounInc =
+            { stateOrig | noun = stateOrig.noun + 1 }
+
+        stateIncremented =
+            if stateNounInc.noun > 99 then
+                { stateOrig | noun = 0, verb = stateOrig.verb + 1 }
+
+            else
+                stateNounInc
+    in
+    { stateIncremented
+        | input =
+            stateIncremented.input
+                |> setNoun stateIncremented.noun
+                |> setVerb stateIncremented.verb
+    }
+
+
+computer : RunningState -> ( State, Cmd Msg )
+computer ({ instructionPointer, input } as runningState) =
+    case Array.get instructionPointer input of
+        Nothing ->
+            ( Error "Missing instructionPointer", Cmd.none )
+
+        Just 99 ->
+            ( Complete runningState, Cmd.none )
+
+        Just 1 ->
+            case getCalcParts instructionPointer input of
+                Nothing ->
+                    ( Error "Missing calc parts", Cmd.none )
+
+                Just ( aIdx, bIdx, resultIdx ) ->
+                    ( nextInput (mathOnIndicies aIdx bIdx resultIdx (+) input) runningState, process )
+
+        Just 2 ->
+            case getCalcParts instructionPointer input of
+                Nothing ->
+                    ( Error "Missing calc parts", Cmd.none )
+
+                Just ( aIdx, bIdx, resultIdx ) ->
+                    ( nextInput (mathOnIndicies aIdx bIdx resultIdx (*) input) runningState, process )
+
+        Just a ->
+            ( Error ("Unknown opco\n            : " ++ String.fromInt a), Cmd.none )
 
 
 mathOnIndicies : Int -> Int -> Int -> (Int -> Int -> Int) -> Array Int -> Array Int
@@ -89,9 +151,9 @@ mathOnIndicies aIdx bIdx resultIdx math array =
             array
 
 
-nextInput : Array Int -> Int -> ( Model, Cmd Msg )
-nextInput next index =
-    ( Running { index = index + 4, input = next }, process )
+nextInput : Array Int -> RunningState -> State
+nextInput next state =
+    Running { state | instructionPointer = state.instructionPointer + 4, input = next }
 
 
 getCalcParts : Int -> Array a -> Maybe ( a, a, a )
@@ -105,35 +167,74 @@ getCalcParts index array =
 
 
 view : Model -> Html Msg
-view model =
+view { part1, part2 } =
     Element.layout
         []
         (Element.column
             []
-            (case model of
+            [ case part1 of
                 Error err ->
-                    [ Element.text err ]
+                    Element.text err
 
                 Running _ ->
-                    [ Element.text "Computing" ]
+                    Element.text "Computing"
 
-                Complete answer ->
-                    case Array.get 0 answer of
+                Complete { input } ->
+                    case Array.get 0 input of
                         Nothing ->
-                            [ Element.text "ERROR" ]
+                            Element.text "ERROR"
 
                         Just a ->
-                            [ Element.text ("Part 1: " ++ String.fromInt a) ]
-            )
+                            Element.text ("Part 1: " ++ String.fromInt a)
+            , case part2 of
+                Error err ->
+                    Element.text err
+
+                Running _ ->
+                    Element.text "Computing"
+
+                Complete { noun, verb } ->
+                    Element.text
+                        ("Part 2: "
+                            ++ String.fromInt (100 * noun + verb)
+                            ++ ", noun = "
+                            ++ String.fromInt noun
+                            ++ ", verb = "
+                            ++ String.fromInt verb
+                        )
+            ]
         )
+
+
+setNoun : Int -> Array Int -> Array Int
+setNoun =
+    Array.set 1
+
+
+setVerb : Int -> Array Int -> Array Int
+setVerb =
+    Array.set 2
+
+
+goalValue : Int
+goalValue =
+    19690720
+
+
+checkGoal : Array Int -> Bool
+checkGoal array =
+    array
+        |> Array.get 0
+        |> Maybe.withDefault -1
+        |> (==) goalValue
 
 
 puzzleInput : Array Int
 puzzleInput =
     Array.fromList
         [ 1
-        , 12 -- 0
-        , 2 -- 0
+        , 0
+        , 0
         , 3
         , 1
         , 1
