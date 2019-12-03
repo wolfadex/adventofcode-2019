@@ -1,7 +1,25 @@
 from sequtils import foldl
+from strformat import fmt
 
 proc compute(items: seq): int =
-  foldl(items, a + (b div 3 - 2), 0)
+  foldl(items, a + (weirdMath b), 0)
+
+proc compute2(items: seq): int =
+  foldl(items, a + (solve2 b), 0)
+
+
+proc weirdMath(x: int): int =
+  (x div 3 - 2)
+
+
+proc solve2(mass: int): int =
+  var minimum = weirdMath mass
+  var fuel = 0
+  while minimum > 0:
+    fuel += minimum
+    minimum = weirdMath minimum
+
+  return fuel
 
 const input = @[102562, 138390, 145043, 86679, 120601, 58443, 54761, 81175,
     127897, 69559, 56776, 145671, 69003, 119334, 130205, 77249, 74637, 92068,
@@ -14,4 +32,5 @@ const input = @[102562, 138390, 145043, 86679, 120601, 58443, 54761, 81175,
     80690, 69276, 116640, 108595, 50721, 94623, 93224, 137069, 130118, 97916,
     82232, 137621, 97909, 74061, 140419, 101795, 69316, 64973, 90578, 118503, 100369]
 
-echo compute(input)
+echo fmt"Part 1: {compute(input)}"
+echo fmt"Part 2: {compute2(input)}"

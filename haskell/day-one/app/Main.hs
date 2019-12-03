@@ -1,7 +1,27 @@
 module Main where
 
 main :: IO ()
-main = putStrLn $ show $ foldl (\total item -> item `div` 3 - 2 + total) 0 input
+-- main = putStrLn $ show $ foldl (\total item -> item `div` 3 - 2 + total) 0 input
+main = do
+  putStrLn $ (++) "Part 1: " $ show $ foldl (\total item -> item `div` 3 - 2 + total) 0 input
+  putStrLn $ (++) "Part 2: " $ show $ foldl (\total mass -> compute mass + total) 0 input
+
+
+compute :: Int -> Int
+compute mass =
+  let fuel = weirdMath mass
+  in computeHelper fuel (weirdMath fuel)
+    
+
+
+
+computeHelper :: Int -> Int -> Int
+computeHelper total minimum =
+  if minimum < 0 then total else computeHelper (total + minimum) (weirdMath minimum)
+
+
+weirdMath :: Int -> Int
+weirdMath x = x `div` 3 - 2
 
 
 input :: [Int]

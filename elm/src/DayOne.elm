@@ -8,7 +8,12 @@ main : Html msg
 main =
     Element.layout
         []
-        viewSolution
+        (Element.column
+            []
+            [ viewSolution
+            , viewSolution2
+            ]
+        )
 
 
 viewSolution : Element msg
@@ -20,7 +25,37 @@ viewSolution =
         0
         input
         |> String.fromInt
+        |> (++) "Part 1: "
         |> Element.text
+
+
+viewSolution2 : Element msg
+viewSolution2 =
+    List.foldl
+        (\mass total -> compute mass + total)
+        0
+        input
+        |> String.fromInt
+        |> (++) "Part 2: "
+        |> Element.text
+
+
+compute : Int -> Int
+compute mass =
+    let
+        fuel =
+            mass // 3 - 2
+    in
+    computeHelper fuel (fuel // 3 - 2)
+
+
+computeHelper : Int -> Int -> Int
+computeHelper total minimum =
+    if minimum < 0 then
+        total
+
+    else
+        computeHelper (total + minimum) (minimum // 3 - 2)
 
 
 input : List Int
