@@ -2,12 +2,47 @@ module Main where
 
 import Lib
 import qualified Data.Sequence as Seq
+import qualified Data.Maybe as Maybe
 import Debug.Trace
+
+(<|) :: (a -> b) -> a -> b
+(<|) f a =
+  f a
+
+(|>) :: a -> (a -> b) -> b
+(|>) a f =
+  f a
+
+(<<) :: (b -> c) -> (a -> b) -> a -> c
+(<<) fb fa a =
+  fb (fa a)
+
+(>>) :: (a -> b) -> (b -> c) -> a -> c
+(>>) fa fb a =
+  fb (fa a)
 
 main :: IO ()
 main = do
-  putStrLn $ (++) "Part 1: " $ show $ Seq.lookup 0 $ compute 0 (setVerb 2 (setNoun 12 puzzleInput))
-  -- putStrLn $ (++) "Part 2: " $
+  (Puzzle
+    { input = puzzleInput |> setNoun 12 |> setVerb 2
+    , verb = 2
+    , noun = 12
+    , instructionPointer = 0
+    })
+    |> compute AnyGoal
+    |> show
+    |> (++) "Part 1: "
+    |> putStrLn
+  (Puzzle
+    { input = puzzleInput
+    , verb = 0
+    , noun = 0
+    , instructionPointer = 0
+    })
+    |> compute (Goal 19690720)
+    |> show
+    |> (++) "Part 2: "
+    |> putStrLn
 
 
 
@@ -17,47 +52,74 @@ type Pointer = Int
 
 type Operation = Int -> Int -> Int
 
-compute :: Pointer -> Seq.Seq Int -> Seq.Seq Int
-compute instructionPointer items =
-  computeHelper
-    (Seq.lookup instructionPointer items)
-    (Seq.lookup (instructionPointer + 1) items)
-    (Seq.lookup (instructionPointer + 2) items)
-    (Seq.lookup (instructionPointer + 3) items)
-    instructionPointer
-    items
+data Puzzle = Puzzle
+  { input :: Seq.Seq Int
+  , verb :: Int
+  , noun :: Int
+  , instructionPointer :: Pointer
+  } deriving (Show)
 
-computeHelper :: Maybe Instruction -> Maybe Pointer -> Maybe Pointer -> Maybe Pointer -> Pointer -> Seq.Seq Int -> Seq.Seq Int
-computeHelper (Just 99) _ _ _ _ items = items
-computeHelper (Just 1) (Just aPoint) (Just bPoint) (Just resultPointer) instructionPointer items = operate aPoint bPoint (+) resultPointer items instructionPointer
-computeHelper (Just 2) (Just aPoint) (Just bPoint) (Just resultPointer) instructionPointer items = operate aPoint bPoint (*) resultPointer items instructionPointer
-computeHelper _ _ _ _ _ items = items
+data Goal = Goal Int | AnyGoal
 
+compute :: Goal -> Puzzle -> Int
+compute AnyGoal puzzle = puzzle |> computeHelper |> input |> Seq.lookup 0 |> Maybe.fromMaybe (-1)
+compute (Goal goal) puzzle =
+  puzzle
+    |> computeHelper
+    |> input
+    |> Seq.lookup 0
+    |> Maybe.fromMaybe (-1)
+    |> (==) goal
+    |> (\reachedGoal ->
+          if reachedGoal then
+            100 * (noun puzzle) + (verb puzzle)
 
-operate :: Pointer -> Pointer -> Operation -> Pointer -> Seq.Seq Int -> Pointer -> Seq.Seq Int
-operate aPoint bPoint oper resPointer items instructionPointer =
-  let newItems = nextItems a b oper resPointer items
-  in computeHelper
-    (Seq.lookup nextInsPointer newItems)
-    (Seq.lookup (nextInsPointer + 1) newItems)
-    (Seq.lookup (nextInsPointer + 2) newItems)
-    (Seq.lookup (nextInsPointer + 3) newItems)
-    nextInsPointer
-    newItems
-  where
-    a = Seq.lookup aPoint items
-    b = Seq.lookup bPoint items
-    nextInsPointer = instructionPointer + 4
+          else
+            compute (Goal goal) (incrementNounVerb puzzle)
+        )
 
 
-nextItems :: Maybe Int -> Maybe Int -> Operation -> Pointer -> Seq.Seq Int -> Seq.Seq Int
-nextItems (Just a) (Just b) oper resPointer items = Seq.update resPointer (oper a b) items
-nextItems _ _ _ _ items = items
+incrementNounVerb :: Puzzle -> Puzzle
+incrementNounVerb puzzle =
+  let
+    n = noun puzzle
+    v = verb puzzle
+    nextNoun = if n + 1 > 99 then 0 else n + 1
+    nextVerb = if n + 1 > 99 then v + 1 else v
+  in
+  puzzle { noun = nextNoun
+         , verb = nextVerb
+         , input = (input puzzle) |> setNoun nextNoun |> setVerb nextVerb
+         }
+  
 
+computeHelper :: Puzzle -> Puzzle
+computeHelper puzzle =
+      execInstruction (Seq.lookup (instructionPointer puzzle) (input puzzle)) puzzle
 
-goalValue :: Int
-goalValue =
-    19690720
+execInstruction :: Maybe Instruction -> Puzzle -> Puzzle
+execInstruction (Just 99) puzzle = puzzle
+execInstruction (Just 1) puzzle = puzzle |> operate (+) |> computeHelper
+execInstruction (Just 2) puzzle = puzzle |> operate (*) |> computeHelper
+execInstruction _ puzzle = puzzle
+
+operate :: Operation -> Puzzle -> Puzzle
+operate oper puzzle =
+  let
+    inp = input puzzle
+    inPointer = instructionPointer puzzle
+    maybeAPoint = Seq.lookup (inPointer + 1) inp
+    maybeBPoint = Seq.lookup (inPointer + 2) inp
+    resPoint = Seq.lookup (inPointer + 3) inp
+  in case ( maybeAPoint, maybeBPoint, resPoint ) of
+      ( Just aPoint, Just bPoint, Just res ) ->
+        let
+          maybeA = Seq.lookup aPoint inp
+          maybeB = Seq.lookup bPoint inp
+        in case ( maybeA, maybeB ) of
+          ( Just a, Just b ) -> puzzle { input = Seq.update res (oper a b) inp, instructionPointer = inPointer + 4 }
+          _ -> puzzle
+      _ -> puzzle
 
 
 setNoun :: Int -> Seq.Seq Int -> Seq.Seq Int
