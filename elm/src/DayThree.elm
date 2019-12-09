@@ -1,74 +1,98 @@
 module DayThree exposing (main)
 
-import Array exposing (Array)
-import Browser
-import Element exposing (Element)
+import Dict.Any as AnyDict exposing (AnyDict)
+import Element
 import Html exposing (Html)
+import List.Extra as List
 import Parser exposing ((|.), (|=), Parser)
-import Set exposing (Set)
+import Set.Any as AnySet exposing (AnySet)
 
 
-main : Program () Model Msg
+main : Html msg
 main =
-    Browser.element
-        { init = init
-        , view = view
-        , update = update
-        , subscriptions = \_ -> Sub.none
-        }
-
-
-type alias Model =
-    { part1 : Int
-    , part2 : Int
-    }
-
-
-init : () -> ( Model, Cmd Msg )
-init _ =
     let
         ( line1, line2 ) =
             puzzleInput
 
+        dict1 =
+            line1
+                |> parseActionList
+                |> plotLine 0 origin (AnyDict.empty pointToString)
+
+        dict2 =
+            line2
+                |> parseActionList
+                |> plotLine 0 origin (AnyDict.empty pointToString)
+
+        set1 =
+            dict1
+                |> AnyDict.toList
+                |> List.map Tuple.first
+                |> AnySet.fromList pointToString
+
+        set2 =
+            dict2
+                |> AnyDict.toList
+                |> List.map Tuple.first
+                |> AnySet.fromList pointToString
+
         origin =
             ( 0, 0 )
+
+        intersections =
+            AnySet.intersect set1 set2
+                |> AnySet.remove origin
     in
-    ( { part1 =
-            let
-                l1 =
-                    line1
-                        |> parseActionList
-                        |> plotLine origin Set.empty
-
-                l2 =
-                    line2
-                        |> parseActionList
-                        |> plotLine origin Set.empty
-            in
-            Set.intersect l1 l2
-                |> Set.remove origin
+    Element.layout
+        []
+        (Element.column
+            []
+            [ intersections
                 |> nearest origin
-      , part2 = -1
-      }
-    , Cmd.none
-    )
+                |> String.fromInt
+                |> (++) "Part 1: "
+                |> Element.text
+            , let
+                dict1Filtered =
+                    filterPointsByCrosses intersections dict1
+
+                dict2Filtered =
+                    filterPointsByCrosses intersections dict2
+
+                dictFiltered =
+                    AnyDict.merge
+                        AnyDict.insert
+                        (\p s1 s2 result -> AnyDict.insert p (s1 + s2) result)
+                        AnyDict.insert
+                        dict1Filtered
+                        dict2Filtered
+                        (AnyDict.empty pointToString)
+              in
+              dictFiltered
+                |> AnyDict.toList
+                |> List.sortBy Tuple.second
+                |> List.head
+                |> Maybe.withDefault ( origin, -1 )
+                |> Tuple.second
+                |> String.fromInt
+                |> (++) "Part 2: "
+                |> Element.text
+            ]
+        )
 
 
-testInput : ( List String, List String )
-testInput =
-    ( [ "R98", "U47", "R26", "D63", "R33", "U87", "L62", "D20", "R33", "U53", "R51" ]
-    , [ "U98", "R91", "D20", "R16", "D67", "R40", "U7", "R15", "U6", "R7" ]
-    )
-
-
-
--- ( [ "R75", "D30", "R83", "U83", "L12", "D49", "R71", "U7", "L72" ]
--- , [ "U62", "R66", "U55", "R34", "D71", "R55", "D58", "R83" ]
--- )
+filterPointsByCrosses : AnySet String Point -> AnyDict String Point Int -> AnyDict String Point Int
+filterPointsByCrosses crosses =
+    AnyDict.filter (\p _ -> AnySet.member p crosses)
 
 
 type alias Point =
     ( Int, Int )
+
+
+pointToString : Point -> String
+pointToString ( x, y ) =
+    String.fromInt x ++ "," ++ String.fromInt y
 
 
 type Action
@@ -86,8 +110,8 @@ parseActionList =
                 Ok a ->
                     a
 
-                Err err ->
-                    Debug.log ("Parse error: " ++ Debug.toString err) (Up 0)
+                Err _ ->
+                    Up 0
         )
 
 
@@ -129,8 +153,8 @@ distance ( x1, y1 ) ( x2, y2 ) =
     abs (x2 - x1) + abs (y2 - y1)
 
 
-plotLine : Point -> Set Point -> List Action -> Set Point
-plotLine origin result line =
+plotLine : Int -> Point -> AnyDict String Point Int -> List Action -> AnyDict String Point Int
+plotLine steps origin result line =
     case line of
         next :: remaining ->
             let
@@ -143,72 +167,54 @@ plotLine origin result line =
                         |> List.head
                         |> Maybe.withDefault origin
             in
-            plotLine nextOrigin (List.foldl Set.insert result nextPoints) remaining
+            plotLine
+                (steps + List.length nextPoints)
+                nextOrigin
+                (List.indexedFoldl (maybeAddPoint steps) result nextPoints)
+                remaining
 
         [] ->
             result
+
+
+maybeAddPoint : Int -> Int -> Point -> AnyDict String Point Int -> AnyDict String Point Int
+maybeAddPoint steps index point points =
+    if AnyDict.member point points then
+        points
+
+    else
+        AnyDict.insert point (steps + 1 + index) points
 
 
 actionToPoints : Point -> Action -> List Point
 actionToPoints ( x, y ) action =
     case action of
         Up n ->
-            List.range y (y + n)
+            List.range (y + 1) (y + n)
                 |> List.map (\i -> ( x, i ))
 
         Down n ->
-            List.range (y - n) y
+            List.range (y - n) (y - 1)
                 |> List.map (\i -> ( x, i ))
                 |> List.reverse
 
         Left n ->
-            List.range (x - n) x
+            List.range (x - n) (x - 1)
                 |> List.map (\i -> ( i, y ))
                 |> List.reverse
 
         Right n ->
-            List.range x (x + n)
+            List.range (x + 1) (x + n)
                 |> List.map (\i -> ( i, y ))
 
 
-nearest : Point -> Set Point -> Int
+nearest : Point -> AnySet String Point -> Int
 nearest origin others =
     others
-        |> Set.map (distance origin)
-        |> Set.toList
+        |> AnySet.map identity (distance origin)
+        |> AnySet.toList
         |> List.minimum
         |> Maybe.withDefault -1
-
-
-type Msg
-    = NoOp
-
-
-update : Msg -> Model -> ( Model, Cmd Msg )
-update msg model =
-    case msg of
-        NoOp ->
-            ( model, Cmd.none )
-
-
-view : Model -> Html Msg
-view { part1, part2 } =
-    Element.layout
-        []
-        (Element.column
-            []
-            [ Element.text ("Part 1: " ++ String.fromInt part1)
-
-            -- , Element.text
-            --     ("Part 2: "
-            --         ++ String.fromInt (100 * noun + verb)
-            --         ++ ", noun = "
-            --         ++ String.fromInt noun
-            --         ++ ", verb = "
-            --         ++ String.fromInt verb
-            --     )
-            ]
-        )
 
 
 puzzleInput : ( List String, List String )
